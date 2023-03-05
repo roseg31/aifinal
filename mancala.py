@@ -1,6 +1,9 @@
+import numpy as np
+import copy
+
 class Mancala:
     def __init__(self, playMode, boardSize, marbleCount):
-        self.playMode = playMode
+        self.playMode = playMode # 1 = two humans, 2 = 1 bot, 1 human
         self.boardSize = boardSize
         self.board = self.initBoard(boardSize, marbleCount)
         self.player1 = 0
@@ -44,10 +47,11 @@ class Mancala:
 
         return board
 
-    def play(self):
+    def play(self, bot1):
         print(self)
         while self.player1HasMoves() or self.player2HasMoves():
             if self.turn == 1: #Player 1's turn
+                print("Player 1's turn:")
                 if self.player1HasMoves() == False:
                     print("Player 1 has no available moves.")
                     self.turn = 2
@@ -59,11 +63,22 @@ class Mancala:
                         print("Player 1 gets to go again!")
                     else:
                         self.turn = 2
+                elif self.playMode == 2:
+                    print("HERE")
+                    move = bot1.alphaBetaSearch(copy.deepcopy(self))
+                    print("Player 1 selects " + str(move))
+                    repeatFlag = self.move(move)
+                    print(self)
+                    if repeatFlag == True:
+                        print("Player 1 gets to go again!")
+                    else:
+                        self.turn = 2
             elif self.turn == 2:
+                print("Player 2's turn:")
                 if self.player2HasMoves() == False:
                     print("Player 2 has no available moves.")
                     self.turn = 1
-                elif self.playMode == 1:
+                elif self.playMode != 3:
                     move = self.getConsoleMove()
                     repeatFlag = self.move(move)
                     print(self)
@@ -125,9 +140,111 @@ class Mancala:
             self.board[loc[0]][loc[1]] += 1
             x += 1
 
+        if self.turn == (loc[0]+1) and self.board[loc[0]][loc[1]] == 1:
+            oppRow = 1
+            if self.turn == 2:
+                oppRow = 0
+
+            temp = 0
+            temp += self.board[loc[0]][loc[1]]
+            self.board[loc[0]][loc[1]] = 0
+            temp += self.board[oppRow][loc[1]]
+            self.board[oppRow][loc[1]] = 0
+
+            if self.turn == 1:
+                self.player1 += temp
+            else:
+                self.player2 += temp
+
         return False
 
+    def setState(self, board, p1, p2):
+        self.board = board
+        self.player1 = p1
+        self.player2 = p2
 
-mancala = Mancala(1, 6, 4)
+    def gameEnd(self):
+        return (self.player1HasMoves() and self.player2HasMoves())
+
+    def utility(self):
+        return (self.player1 - self.player2)
+
+    def getMoves(self):
+        moves = []
+        row = self.turn - 1
+        for col in range(self.boardSize):
+            if self.board[row][col] != 0:
+                moves.append(col)
+        return moves
+
+    def nextState(self, move):
+        copyNext = copy.deepcopy(self)
+        if move != None:
+            copyNext.move(move)
+        if copyNext.turn == 1:
+            copyNext.turn = 2
+        return copyNext
+
+class AlphaBetaPlayer:
+    def __init__(self):
+        return
+
+    def getMove(self, state):
+        return self.alphaBetaSearch(state)
+
+    def alphaBetaSearch(self, state):
+        alpha = -np.inf
+        beta = np.inf
+        bestAction = None
+        possibleMoves= state.getMoves()
+        for action in possibleMoves:
+            val = self.minFunc(state.nextState(action), alpha, beta)
+            if val > alpha:
+                alpha = val
+                bestAction = action
+        return bestAction
+
+    def maxFunc(self, state, alpha, beta):
+        if state.gameEnd():
+            return state.utility()
+        val = -np.inf
+        possibleMoves = state.getMoves()
+        if possibleMoves == []:
+            val = max(val, self.minFunc(state.nextState(None), alpha, beta))
+            if val >= beta:
+                return val
+            alpha = max(alpha, val)
+        else:
+            for action in possibleMoves:
+                val = max(val, self.minFunc(state.nextState(action), alpha, beta))
+                if val >= beta:
+                    return val
+                alpha = max(alpha, val)
+        return val
+
+    def minFunc(self, state, alpha, beta):
+        if state.gameEnd():
+            return state.utility()
+        val = np.inf
+        possibleMoves = state.getMoves()
+        if possibleMoves == []:
+            val = min(val, self.maxFunc(state.nextState(None), alpha, beta))
+            if val >= alpha:
+                return val
+            beta = min(beta, value)
+        else:
+            for action in state.getMoves():
+                val = min(val, self.maxFunc(state.nextState(action), alpha, beta))
+                if val >= alpha:
+                    return val
+                beta = min(beta, value)
+        return val
+
+mancala = Mancala(2, 6, 4)
 print(mancala)
-mancala.play()
+ABPlayer = AlphaBetaPlayer()
+
+#selection = ABPlayer.alphaBetaSearch(mancala)
+#print(selection)
+#print(mancala)
+mancala.play(ABPlayer)
