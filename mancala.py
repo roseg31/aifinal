@@ -340,7 +340,7 @@ def ucb(n):
 ###Board/Game/Agent Setup###
 ############################
 
-mancala = Mancala(4, 6, 4) #default 1,6,4
+mancala = Mancala(1, 6, 4) #default 1,6,4
 mancala2 = copy.deepcopy(mancala)
 print(mancala)
 ABPlayer = AlphaBetaPlayer(10)
