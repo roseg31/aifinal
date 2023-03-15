@@ -1,14 +1,22 @@
 import numpy as np
 import copy
+import random
+import time
 
+#Virtual mancala game: can choose
+#play mode (which players to use),
+#board size (add/remove pots)
+#marble count (how many marbles start in each pot)
 class Mancala:
     def __init__(self, playMode, boardSize, marbleCount):
-        self.playMode = playMode # 1 = two humans, 2 = 1 bot, 1 human
+        self.playMode = playMode # 1 = two humans, 2 = A-B bot vs human, 3 = MCTS bot vs human, 4= A-B bot vs MCTS bot
         self.boardSize = boardSize
         self.board = self.initBoard(boardSize, marbleCount)
         self.player1 = 0
         self.player2 = 0
         self.turn = 1
+        self.turns1 = 0
+        self.turns2 = 0
 
     def __str__(self):
         string = ""
@@ -47,15 +55,17 @@ class Mancala:
 
         return board
 
-    def play(self, bot1):
+    def play(self, bot1, bot2):
         print(self)
         while self.player1HasMoves() or self.player2HasMoves():
             if self.turn == 1: #Player 1's turn
                 print("Player 1's turn:")
+                self.turns1 += 1
                 if self.player1HasMoves() == False:
+                    self.turns1 -= 1
                     print("Player 1 has no available moves.")
                     self.turn = 2
-                elif self.playMode == 1:
+                elif self.playMode == 1: #Player 1 is human
                     move = self.getConsoleMove()
                     repeatFlag = self.move(move)
                     print(self)
@@ -63,9 +73,19 @@ class Mancala:
                         print("Player 1 gets to go again!")
                     else:
                         self.turn = 2
-                elif self.playMode == 2:
-                    print("HERE")
+                elif self.playMode == 2 or self.playMode == 4: #Player 1 is Alpha-beta
+                    print("Bot is thinking...")
                     move = bot1.alphaBetaSearch(copy.deepcopy(self))
+                    #move = bot2.MCTS(copy.deepcopy(self))
+                    print("Player 1 selects " + str(move))
+                    repeatFlag = self.move(move)
+                    print(self)
+                    if repeatFlag == True:
+                        print("Player 1 gets to go again!")
+                    else:
+                        self.turn = 2
+                elif self.playMode == 3:
+                    move = bot2.MCTS(copy.deepcopy(self))
                     print("Player 1 selects " + str(move))
                     repeatFlag = self.move(move)
                     print(self)
@@ -75,11 +95,23 @@ class Mancala:
                         self.turn = 2
             elif self.turn == 2:
                 print("Player 2's turn:")
+                self.turns2 += 1
                 if self.player2HasMoves() == False:
+                    self.turns2 -= 1
                     print("Player 2 has no available moves.")
                     self.turn = 1
-                elif self.playMode != 3:
+                elif self.playMode != 4: #Player 2 is human
                     move = self.getConsoleMove()
+                    repeatFlag = self.move(move)
+                    print(self)
+                    if repeatFlag == True:
+                        print("Player 2 gets to go again!")
+                    else:
+                        self.turn = 1
+                elif self.playMode == 4: #Player 2 is MCTS
+                    move = bot2.MCTS(copy.deepcopy(self))
+                    #move = bot1.alphaBetaSearch(copy.deepcopy(self))
+                    print("Player 2 selects " + str(move))
                     repeatFlag = self.move(move)
                     print(self)
                     if repeatFlag == True:
@@ -88,7 +120,7 @@ class Mancala:
                         self.turn = 1
         print("Game over!")
 
-
+    #Function to get user input for the move -- takes ONLY integers!
     def getConsoleMove(self):
         print("Player " + str(self.turn) + " enter move:")
         inp = int(input())
@@ -110,6 +142,7 @@ class Mancala:
         for x in range(self.boardSize):
             if self.board[1][x] != 0:
                 return True
+        return False
 
     def move(self, y):
         count = self.board[self.turn - 1][y]
@@ -164,7 +197,7 @@ class Mancala:
         self.player2 = p2
 
     def gameEnd(self):
-        return (self.player1HasMoves() and self.player2HasMoves())
+        return not (self.player1HasMoves() and self.player2HasMoves())
 
     def utility(self):
         return (self.player1 - self.player2)
@@ -183,11 +216,13 @@ class Mancala:
             copyNext.move(move)
         if copyNext.turn == 1:
             copyNext.turn = 2
+        if copyNext.turn == 2:
+            copyNext.turn = 1
         return copyNext
 
 class AlphaBetaPlayer:
-    def __init__(self):
-        return
+    def __init__(self, limit):
+        self.limit = limit
 
     def getMove(self, state):
         return self.alphaBetaSearch(state)
@@ -198,53 +233,136 @@ class AlphaBetaPlayer:
         bestAction = None
         possibleMoves= state.getMoves()
         for action in possibleMoves:
-            val = self.minFunc(state.nextState(action), alpha, beta)
+            val = self.minFunc(state.nextState(action), alpha, beta, 0)
             if val > alpha:
                 alpha = val
                 bestAction = action
         return bestAction
 
-    def maxFunc(self, state, alpha, beta):
-        if state.gameEnd():
+    def maxFunc(self, state, alpha, beta, count):
+        if state.gameEnd() or count > self.limit:
             return state.utility()
         val = -np.inf
         possibleMoves = state.getMoves()
         if possibleMoves == []:
-            val = max(val, self.minFunc(state.nextState(None), alpha, beta))
+            val = max(val, self.minFunc(state.nextState(None), alpha, beta, count+1))
             if val >= beta:
                 return val
             alpha = max(alpha, val)
         else:
             for action in possibleMoves:
-                val = max(val, self.minFunc(state.nextState(action), alpha, beta))
+                val = max(val, self.minFunc(state.nextState(action), alpha, beta, count+1))
                 if val >= beta:
                     return val
                 alpha = max(alpha, val)
         return val
 
-    def minFunc(self, state, alpha, beta):
-        if state.gameEnd():
+    def minFunc(self, state, alpha, beta, count):
+        if state.gameEnd() or count > self.limit:
             return state.utility()
         val = np.inf
         possibleMoves = state.getMoves()
         if possibleMoves == []:
-            val = min(val, self.maxFunc(state.nextState(None), alpha, beta))
+            val = min(val, self.maxFunc(state.nextState(None), alpha, beta, count+1))
             if val >= alpha:
                 return val
             beta = min(beta, value)
         else:
             for action in state.getMoves():
-                val = min(val, self.maxFunc(state.nextState(action), alpha, beta))
+                val = min(val, self.maxFunc(state.nextState(action), alpha, beta, count+1))
                 if val >= alpha:
                     return val
-                beta = min(beta, value)
+                beta = min(beta, val)
         return val
 
-mancala = Mancala(2, 6, 4)
-print(mancala)
-ABPlayer = AlphaBetaPlayer()
+class MCTSPlayer:
+    def __init__(self, limit):
+        self.limit = limit
 
-#selection = ABPlayer.alphaBetaSearch(mancala)
+    def MCTS(self, state):
+        root = MCTSNode(state=state)
+        for i in range(self.limit):
+            leaf = self.getLeaf(root)
+            child = self.expand(leaf)
+            result = self.simulate(child)
+            self.backpropagate(child, result)
+
+        maxStateNode = max(root.children, key=lambda p: p.N)
+        return maxStateNode.action
+
+    def getLeaf(self, node):
+        if node.children:
+            return self.getLeaf(max(node.children.keys(), key=ucb))
+        else:
+            return node
+
+    def expand(self, node):
+        if len(node.children)==0 and not node.state.gameEnd():
+            node.children = {MCTSNode(parent=node, state=node.state.nextState(move), action=move): move
+                                              for move in node.state.getMoves()}
+        return self.getLeaf(node)
+
+    def simulate(self, node):
+        state = node.state
+        while not state.gameEnd():
+            action = random.choice(list(state.getMoves()))
+            state = state.nextState(action)
+        v = -state.utility()
+        return -v
+
+    def backpropagate(self, node, util):
+        if util > 0:
+            node.U += util
+        node.N += 1
+        if node.parent:
+            self.backpropagate(node.parent, -util)
+
+
+#node helper class for MCTS
+class MCTSNode:
+    def __init__(self, parent=None, state=None, action=None, U=0, N=0):
+        self.__dict__.update(parent=parent, state=state, action=action, U=U, N=N)
+        self.state = state
+        self.parent = parent
+        self.children = {}
+        self.actions = None
+
+###################
+######HELPERS######
+###################
+
+#ucb helper for MCTS
+def ucb(n):
+    return np.inf if n.N == 0 else n.U / n.N + np.sqrt(np.log(n.parent.N) / n.N)
+
+
+############################
+###Board/Game/Agent Setup###
+############################
+
+mancala = Mancala(4, 6, 4) #default 1,6,4
+mancala2 = copy.deepcopy(mancala)
+print(mancala)
+ABPlayer = AlphaBetaPlayer(10)
+mctsPlayer = MCTSPlayer(1000)
+
+#Code for measuring time:
+
+#t0 = time.time()
+#selection = mctsPlayer.MCTS(mancala)
+#t1 = time.time()
+#print("TIME MCTS: " + str(t1-t0))
 #print(selection)
-#print(mancala)
-mancala.play(ABPlayer)
+
+#t0 = time.time()
+#selection = ABPlayer.alphaBetaSearch(mancala2)
+#t1 = time.time()
+#print("TIME A-B: " + str(t1-t0))
+#print(selection)
+
+#mancala.play(ABPlayer)
+
+#Play game
+mancala.play(ABPlayer, mctsPlayer)
+print("player 1: " + str(mancala.turns1))
+print("player 2: " + str(mancala.turns2))
